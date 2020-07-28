@@ -1,0 +1,130 @@
+---
+title: "HW3"
+author: "Jose Reyes"
+date: "7.21.2020"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+#### Load packages for Association Rules Mining
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+require(dplyr)
+require(RWeka)
+require(arules)
+require(arulesViz)
+require(ggplot2)
+```
+
+#### Load and view bank data
+
+```{r}
+
+bank <- read.csv("bankdata_csv_all.csv", stringsAsFactors = FALSE)
+str(bank)
+summary(bank)
+```
+The data contains information on 600 customers and their ID, age, sex, region, income, marital status, children, car, savings account, current account, mortgage, and if they have purchased a Personal Equity Plan (PEP).
+
+To perform Association Rules mining, the data must be checked for missing values, cleansed, and transformed into the proper data types.
+
+```{r}
+
+ggplot(bank, aes(x=income, y=age)) + 
+  geom_point(shape=18, color="blue")+
+  geom_smooth(method=lm, se=FALSE, linetype="dashed",
+             color="darkred")
+
+ggplot(bank, aes(x=income, color=sex)) +
+  geom_histogram(fill="white")
+
+```
+
+
+#### Clean and Transform Data
+
+-Drop ID column which is not useful for analysis  
+-Discretize age into 7 separate groups  
+-Discretize income into 4 equal groups using the quartile values obtained in the data summary 
+-Convert "Yes" and "No" values into "[variable]="Yes/No"" to allow for proper Association Rules analysis  
+-Convert all other values to nominal values
+
+```{r}
+
+bank <- select(bank, -c(1))
+
+
+bank$age <- cut(bank$age, breaks = c(0,10,20,30,40,50,60,Inf),labels=c("children","teenagers","twenties","thirties","fourties","fifties","elderly"))
+
+bank$income <- cut(bank$income, breaks = c(0,17264,24925,36173,Inf),labels=c("LowestIncome","LowIncome","HighIncome","HighestIncome"))
+
+
+bank$married=dplyr::recode(bank$married, YES="married=YES", NO="married=NO")
+bank$car=dplyr::recode(bank$car, YES="car=YES", NO="car=NO")
+bank$save_act=dplyr::recode(bank$save_act, YES="save_act=YES", NO="save_act=NO")
+bank$current_act=dplyr::recode(bank$current_act, YES="current_act=YES", NO="current_act=NO")
+bank$mortgage=dplyr::recode(bank$mortgage, YES="mortgage=YES", NO="mortgage=NO")
+bank$pep=dplyr::recode(bank$pep, YES="pep=YES", NO="pep=NO")
+
+cols <- c("sex","region","married","children", "car",
+          "save_act","current_act","mortgage","pep")
+bank[,cols] <- lapply(bank[,cols],as.factor)
+
+options(scipen = 999)
+options(digits=3)
+
+```
+
+#### Final check before analysis
+
+```{r}
+str(bank)
+```
+
+#### Association Rules Mining
+
+The Apriori principle will be applied to reduce the overall computational complexity. This is based on the principle that if an itemset is frequent, then all subsets must also be frequent. This algorithm will produce a list of rules which each have a set of items that commonly occur together. 
+
+Each rule's effectiveness is measured by Support, Confidence, and Lift.
+
+Support - How often a rule is applicable to a given data set
+Confidence -  How frequently certain items appear with other items in a transactions
+Lift - The ratio of the confidence of the rule and the expected confidence of the rule
+
+All three values will be reviewed together holistically to properly assess the overall effectiveness of a rule.
+
+
+##### Set Apriori rules
+
+An initial analysis of all rules is performed. The minimum support is set to 0.2 and confidence to 0.76
+```{r}
+rules <- apriori(bank, parameter = list(supp = 0.2, conf = 0.76))
+summary(rules)
+```
+This results in a set of 35 rules; all which have a lift greater than 1. From this, it can be assumed that there are several strong association rules that can be identified from this data set. The following 5 rules contain the highest lift values:
+
+```{r}
+rules <- sort(rules, decreasing = TRUE, by = "lift")
+plot(rules[1:5],method="graph")
+```
+
+```{R}
+inspect(rules[1:5])
+```
+
+Many of these strong association rules are rather intuitive. It can be assumed that married customers with no children will not purchase a PEP due to having dual incomes and lower expenses. Additionally, customers with relatively higher incomes would most likely have savings accounts to earn interest and defer spending for other big purchases such as a new house or a car.
+
+
+##### PEP Analysis
+
+Association rules is then performed to identify common customer demographics and banking information related to the purchasing of a PEP. 
+
+```{r}
+peprules <- apriori(bank, parameter = list(maxlen = 4), appearance = list(rhs = c("pep=pep=YES","pep=pep=NO")))
+peprules2 <- apriori(bank, parameter = list(maxlen = 3), appearance = list(rhs = c("pep=pep=YES","pep=pep=NO")))
+plot(peprules2,method="graph")
+inspect(peprules)
+```
+
+
