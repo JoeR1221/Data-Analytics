@@ -1,5 +1,5 @@
 ---
-title: "HW3"
+title: "AR Mining"
 author: "Jose Reyes"
 date: "7.21.2020"
 output:
