@@ -1,0 +1,182 @@
+---
+title: "HW4"
+author: "Jose Reyes"
+date: "7.28.2020"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+
+```{r}
+
+require(wordcloud)
+require(stats)
+require(cluster)
+require(ggvis)
+require(tidyr)
+require(tm)
+require(slam)
+require(quanteda)
+require(SnowballC)
+require(proxy)
+require(stringi)
+require(Matrix)
+require(tidytext)
+require(plyr)
+require(ggplot2)
+require(factoextra)
+require(mclust)
+require(dplyr)
+require(fpc)
+require(HSAUR)
+
+```
+
+### Load Data 
+```{r}
+
+FedPapersCorpus <- Corpus(DirSource("fedpapers"))
+FedPapersCorpus
+```
+### Clean Data
+```{r}
+
+#filter out "stop words" before processing of natural language data
+StopWords <- c("will", "one", "two", "may", "less", "well","might","withou","small","single",
+               "several","but","very","can","must","also","any","and","are","however","into",
+               "almost","can","for","add")
+
+STOPS <- stopwords('english')
+
+#Create Document Term Matrix
+#Remove Stop words
+#Remove words that appear less than 1% and more than 50% of the documents
+
+FedPapers <- DocumentTermMatrix(FedPapersCorpus, control = list(
+  stopwords = TRUE,
+  wordLengths=c(3,15),
+  removePunctuation = T,
+  removeNumbers = T,
+  tolower = T,
+  stemming = T,
+  remove_separators = T,
+  stopwords = StopWords,
+  bound = list(global=c(.0085,85))
+                       ))
+
+FedPapers <- as.matrix(FedPapers)
+```
+
+
+### Explore Data
+```{r}
+
+#Create World Cloud
+WC <- wordcloud(colnames(FedPapers),FedPapers[11,])
+
+#Inspect Matrix
+FedPapers[1:10, 1:10]
+
+#View Most Common words
+WordFreq <- colSums(FedPapers)
+ord <- order(WordFreq)
+WordFreq[tail(ord)]
+
+#View mean and range
+mean(rowSums(FedPapers))
+median(rowSums(FedPapers))
+range(rowSums(FedPapers))
+
+```
+### Normalization
+```{r}
+
+#Normalization is beneficial for analysis
+N_FedPapers <- apply(FedPapers, 1, function(i) round(i/sum(i),3))
+N_FedPapers <- t(N_FedPapers)
+
+#Inspect normalized data
+N_FedPapers[25:45,25:40]
+
+```
+### Check data structure and convert to DF
+```{r}
+N_FedPapers <- as.data.frame(N_FedPapers)
+str(N_FedPapers)
+```
+### Analysis
+
+```{r}
+#Complete HAC Analysis
+d=dist(N_FedPapers)
+hc=hclust(d)
+plot(hc, cex=0.75, hang=-1)
+```
+
+```{r}
+#Define different distance measures
+m=N_FedPapers
+DistanceE <- dist(m, method="euclidean")
+DistanceM <- dist(m, method="manhattan")
+DistanceC <- dist(m, method="cosine")
+```
+
+
+```{r}
+#HAC - hierarchical clustering
+HCE=hclust(DistanceE,method="ward.D")
+plot(HCE, cex=0.75, hang=-1)
+```
+
+
+```{r}
+#HAC - heirarchial clustering
+HCM=hclust(DistanceM,method="ward.D")
+plot(HCM, cex=0.75, hang=-1)
+```
+```{r}
+#HAC - heirarchial clustering
+HCC=hclust(DistanceC,method="ward.D")
+plot(HCC, cex=0.75, hang=-1)
+```
+
+```{r}
+#k-means clustering
+
+K1 <- kmeans(N_FedPapers,centers = 4, nstart=100, iter.max = 50)
+K1Analysis <- N_FedPapers
+K1Analysis$cluster <- K1$cluster
+
+```
+
+
+```{r}
+K2 <- kmeans(N_FedPapers,centers = 4, nstart=125, iter.max = 50)
+K2Analysis <- N_FedPapers
+K2Analysis$cluster <- K2$cluster
+```
+
+```{r}
+K3 <- kmeans(N_FedPapers,centers = 4, nstart=150, iter.max = 100)
+K3Analysis <- N_FedPapers
+K3Analysis$cluster <- K3$cluster
+```
+
+
+```{r}
+dissE <- daisy(N_FedPapers) 
+dE2   <- dissE^2
+sk2   <- silhouette(K1Analysis$cluster, dE2)
+plot(sk2)
+```
+
+
+
+
+
+
+
+
+
