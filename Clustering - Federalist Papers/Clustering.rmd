@@ -1,5 +1,5 @@
 ---
-title: "HW4"
+title: "Clustering"
 author: "Jose Reyes"
 date: "7.28.2020"
 output:
