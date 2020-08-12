@@ -1,0 +1,199 @@
+---
+title: "Decision Tree"
+author: "Jose Reyes"
+date: "8.11.2020"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+### Decision Tree Analysis
+
+
+```{r}
+require("tm")
+require("stringr")
+require("stringi")
+require("Matrix")
+require("tidytext")
+require("dplyr")
+require("ggplot2")
+require("factoextra")
+require("rpart")
+require("rattle")
+require("rpart.plot")
+require("RColorBrewer")
+require("wordcloud")
+require("tidyr")
+require("partykit")
+
+```
+
+### Load Data 
+```{r}
+
+FedPapersCorpus <- Corpus(DirSource("fedpapers"))
+FedPapersCorpus
+```
+### Clean Data
+
+
+```{r}
+#Define stop words
+
+(StopWords <-c("will", "one","two","may","less","publius","Madison","Alexand","Alexander","James",
+               "Hamilton","Jay","well","might","without","small","single","several","but","very",
+               "can","must","also","any","and","are","however","into","almost","can","for","add","Author"))
+STOPS <- stopwords('english')
+
+```
+```{r}
+FedPapers <- DocumentTermMatrix(FedPapersCorpus, control = list(
+  stopwords = TRUE,
+  wordLengths=c(3,15),
+  removePunctuation = T,
+  removeNumbers = T,
+  tolower = T,
+  stemming = T,
+  remove_separators = T,
+  stopwords = StopWords,
+  removeWords = STOPS,
+  removeWords = StopWords,
+  bounds = list(global = c(20,Inf))
+  ))
+
+```
+
+```{r}
+freq <-sort(colSums(as.matrix(FedPapers)), decreasing=TRUE)
+wf <- data.frame(word=names(freq), freq=freq)
+
+subset(wf, freq>250)    %>%
+        ggplot(aes(x = reorder(word, -freq), freq), fill = freq) +
+        geom_bar(stat="identity") +
+        labs(title="Most Frequent Words in Federalist Papers",
+        x ="Word", y = "Word Frequency") +
+        theme(axis.text.x=element_text(angle=45, hjust=1))
+```
+
+```{r}
+FedPapers_Matrix <- as.matrix(FedPapers)
+```
+
+### Vectorization - encode frequency information
+
+```{r}
+WordFreq <- colSums(FedPapers_Matrix)
+WC <- wordcloud(colnames(FedPapers_Matrix),FedPapers_Matrix[11,])
+```
+```{r}
+#Inspect Matrix
+FedPapers_Matrix[1:10, 1:10]
+
+#View Most Common words
+WordFreq <- colSums(FedPapers_Matrix)
+ord <- order(-FedPapers_Matrix)
+WordFreq["head"(ord)]
+
+#View mean and range
+mean(rowSums(FedPapers_Matrix))
+median(rowSums(FedPapers_Matrix))
+range(rowSums(FedPapers_Matrix))
+```
+### Normalization
+```{r}
+
+#Normalization is beneficial for analysis
+N_FedPapers <- apply(FedPapers_Matrix, 1, function(i) round(i/sum(i),3))
+N_FedPapers <- t(N_FedPapers)
+
+#Inspect normalized data
+N_FedPapers[25:45,25:40]
+
+```
+
+```{r}
+
+#Convert to DataFrame and label data
+DF_FedPapers <- as.data.frame(N_FedPapers)
+DF_FedPapers <- DF_FedPapers %>% rownames_to_column("Author")
+DF_FedPapers[1:11,1] <- "Who_Am_I?"
+DF_FedPapers[12:62,1] <- "Hamilton"
+DF_FedPapers[63:65,1] <- "Hamilton_Madison"
+DF_FedPapers[66:70,1] <- "Jay"
+DF_FedPapers[71:85,1] <- "Madison"
+```
+
+### Experimental Design
+
+```{r}
+
+#Make Train/Test Data
+numDisputed = 11
+numTotalPapers = nrow(DF_FedPapers)
+trainRatio <- .6
+set.seed(11)
+sample <- sample.int(n=numTotalPapers-numDisputed, size = floor(trainRatio*numTotalPapers), replace = FALSE)
+newSample = sample + numDisputed
+train <- DF_FedPapers[newSample,]
+test <- DF_FedPapers[-newSample,]
+```
+
+```{r}
+#Train Model 1
+Model_1 <- rpart(Author~.,data = train, method = "class", control = rpart.control(cp=0))
+summary(Model_1)
+fancyRpartPlot(Model_1)
+```
+```{r}
+#Examine Model 1
+#How Many Nodes?
+as.party(Model_1)
+
+```
+```{r}
+#Use Model 1 on test data set
+Model_1_Pred <- predict(Model_1, test, type="class")
+table(test$Author,Model_1_Pred)
+```
+```{r}
+#Train Tree Model 2
+Model_2 <- rpart(Author~.,data = train, method = "class", control = rpart.control(cp=0, minsplit = 2, maxdepth = 5))
+summary(Model_2)
+fancyRpartPlot(Model_2)
+```
+```{r}
+#Examine Model 2
+#How Many Nodes?
+as.party(Model_2)
+
+```
+```{r}
+#Use Model 2 on test data set and show results as confusion matrix
+Model_2_Pred <- predict(Model_2, test, type="class")
+table(test$Author,Model_2_Pred)
+```
+```{r}
+#Show Model 2 Results
+print(Model_2_Pred)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
