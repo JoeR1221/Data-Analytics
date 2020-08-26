@@ -1,0 +1,182 @@
+---
+title: "SVM, kNN, and Random Forest"
+author: "Jose Reyes"
+date: "8/25/2020"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r}
+require("FactoMineR")
+require("dplyr")
+require("factoextra")
+require("corrplot")
+require("e1071")
+require("caret")
+require("party")
+require("class")
+require("randomForest")
+
+```
+
+#Part 2: SVM, kNN, and Random Forest
+
+
+### Set variables and function for model evaluation 
+```{r}
+data <- read.csv("Kaggle-digit-train.csv", header = TRUE, stringsAsFactors = TRUE)
+data$label <- factor(data$label)
+set.seed(275)
+DigitSplit <- sample(nrow(data),nrow(data)*.15)
+data <- data[DigitSplit,]
+dim(data)
+
+```
+
+### Set variables and function for model evaluation 
+```{r}
+
+N <- nrow(data)
+kfolds <- 2
+set.seed(30)
+holdout <- split(sample(1:N), 1:kfolds)
+
+```
+
+### Binarize Data
+```{r}
+
+Binarized_Data <- data
+
+for (col in colnames(Binarized_Data)) {
+  if (col != "label") {
+    Binarized_Data[,c(col)] <- ifelse(Binarized_Data[,c(col)] > 131, 1, 0)
+  }
+}
+for (col in colnames(Binarized_Data)) {
+  if (col != "label") {
+    Binarized_Data[, c(col)] <- as.factor(Binarized_Data[,col])
+  }
+}
+
+```
+
+
+
+### Build KNN Model  k-fold cross validation sets
+```{r}
+
+### 2-fold CV
+AllResults <- data.frame(orig=c(), pred=c())
+for (k in 1:2){
+  
+Test <- data[holdout[[k]],]  
+Train <- data[-holdout[[k]],]
+
+### Remove Labels
+Test_noLabel <- Test[-c(1)]
+Test_Label <- Test$label
+
+### Use Decision Tree to predict labels in test data
+KNN_pred <- knn(train = Train, test = Test, cl = Train$label, k=3, prob=FALSE)
+
+
+### Store Results for each 
+AllResults <- rbind(AllResults, data.frame(orig=Test$label, pred=KNN_pred))
+
+}
+```
+
+### Confusion Matrix
+```{r}
+message("KNN Confusion Matrix")
+KNN_Results <- table(AllResults$orig,AllResults$pred)
+KNN_Results
+
+message("Overall accuracy:  ",(sum(diag(KNN_Results))/sum(KNN_Results))) #overall accuracy
+message("Incorrect classification:  ", 1-sum(diag(KNN_Results))/sum(KNN_Results))
+
+```
+
+### Build SVM Model k-fold cross validation sets
+```{r}
+
+cols_to_remove = c()
+for (col in colnames(Binarized_Data)) {
+  if (col != "label"){
+    if (length(unique(Binarized_Data[,c(col)])) ==1){
+      cols_to_remove <- c(cols_to_remove, col)
+    }
+  }
+}
+
+Binarized_Data_trainset <- Binarized_Data[-which(colnames(Binarized_Data) %in% cols_to_remove)]
+
+### 2-fold CV
+AllResults <- data.frame(orig=c(), pred=c())
+for (k in 1:2){
+  
+Test <- Binarized_Data_trainset[holdout[[k]],]  
+Train <- Binarized_Data_trainset[-holdout[[k]],]
+
+### Remove Labels
+Test_noLabel <- Test[-c(1)]
+Test_Label <- Test$label
+
+SVM <- svm(label~., Train, kernel ="radial", cost=100, na.action=na.pass)
+SVM_pred <- predict(SVM, Test_noLabel, type=c("class"))
+
+### Store Results 
+AllResults <- rbind(AllResults, data.frame(orig=Test$label, pred=SVM_pred))
+
+}
+```
+
+### Confusion Matrix
+```{r}
+message("SVM Confusion Matrix")
+SVM_Results <- table(AllResults$orig,AllResults$pred)
+SVM_Results
+
+message("Overall accuracy:  ",(sum(diag(SVM_Results))/sum(SVM_Results))) #overall accuracy
+message("Incorrect classification:  ", 1-sum(diag(SVM_Results))/sum(SVM_Results))
+
+```
+
+### Build Random Forest Model k-fold cross validation sets
+```{r}
+
+
+### 2-fold CV
+AllResults <- data.frame(orig=c(), pred=c())
+for (k in 1:2){
+  
+Test <- data[holdout[[k]],]  
+Train <- data[-holdout[[k]],]
+
+### Remove Labels
+Test_noLabel <- Test[-c(1)]
+Test_Label <- Test$label
+
+RF <- randomForest(label~., Train, na.action=na.pass)
+RF_pred <- predict(RF,Test_noLabel, type=c("class"))
+
+
+### Store Results 
+AllResults <- rbind(AllResults, data.frame(orig=Test$label, pred=RF_pred))
+
+}
+```
+
+### Confusion Matrix
+```{r}
+message("RF Confusion Matrix")
+RF_Results <- table(AllResults$orig,AllResults$pred)
+RF_Results
+
+message("Overall accuracy:  ",(sum(diag(RF_Results))/sum(RF_Results))) #overall accuracy
+message("Incorrect classification:  ", 1-sum(diag(RF_Results))/sum(RF_Results))
+```
+
+

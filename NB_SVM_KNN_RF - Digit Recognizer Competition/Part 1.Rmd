@@ -1,0 +1,204 @@
+---
+title: "Naive Bayes and Decision Tree"
+author: "Jose Reyes"
+date: "8/25/2020"
+output:
+  word_document: default
+  html_document: default
+---
+
+
+```{r}
+require("FactoMineR")
+require("dplyr")
+require("factoextra")
+require("corrplot")
+require("e1071")
+require("caret")
+require("party")
+require("class")
+require("randomForest")
+
+```
+
+#Part 1: Naive Bayes and Decision Tree
+
+### Load Train Data
+```{r}
+data <- read.csv("Kaggle-digit-train.csv", header = TRUE, stringsAsFactors = TRUE)
+data$label <- as.factor(data$label)
+
+```
+
+### Load Test Data
+```{r}
+test_data <- read.csv("Kaggle-digit-test.csv", header = TRUE, stringsAsFactors = TRUE)
+dim(test_data)
+
+```
+
+### Reduce dimensionality of the data by removing the noise and redundancy in the data
+### Use Principal Component Analysis to select features based on variance
+```{r}
+pca_data <- PCA(t(select(data,-label)), ncp = 10, graph=FALSE)
+
+```
+
+### Reduce number of dimensions to 10
+```{r}
+data = data.frame(data$label, pca_data$var$coord)
+
+```
+
+### Reduce number of samples used to 25% of original number of rows
+```{r}
+set.seed(275)
+Reduce_Data_25 <- sample(nrow(data), nrow(data)*.25)
+Reduced_Data <- data[Reduce_Data_25,]
+dim(Reduced_Data)
+
+
+```
+### Repeat for test data
+```{r}
+pca_data_test <- PCA(t(select(test_data,-label)), ncp = 10, graph=FALSE)
+
+```
+
+### Reduce number of dimensions to 10
+```{r}
+test_data = data.frame(test_data$label, pca_data_test$var$coord)
+
+```
+
+### Reduce number of samples used to 25% of original number of rows
+```{r}
+set.seed(275)
+Reduce_test_Data_25 <- sample(nrow(test_data), nrow(test_data)*.25)
+Reduced_test_Data <- data[Reduce_test_Data_25,]
+dim(Reduced_test_Data)
+
+
+### Remove Labels
+test_data_noLabels <- Reduced_test_Data[-c(1)]
+test_data_Labels <- Reduced_test_Data$data.label
+```
+
+# EDA
+
+###Build Naive Bayes Model  k-fold cross validation sets
+```{r}
+
+### 10-fold CV
+N = nrow(Reduced_Data)
+holdout <- split(sample(1:N), 1:10)
+
+
+AllResults <- list()
+AllLabels <- list()
+for (k in 1:10){
+  
+Test <- Reduced_Data[holdout[[k]],]  
+Train=Reduced_Data[-holdout[[k]],]
+
+### Remove Labels
+Test_noLabel <- Test[-c(1)]
+Test_Label <- Test$data.label
+
+
+### Build Naive Bayes Model
+NB <- naiveBayes(data.label~., data = Reduced_Data, na.action = na.pass)
+
+
+### Use Naive Bayes to predict labels in test data
+NB_pred <- predict(NB, Test_noLabel)
+
+
+### Test accuracy of Naive Bayes model with train data sub set
+confusionMatrix(NB_pred, Test$data.label)
+
+### Store Results for each cold
+AllResults <- c(AllResults, NB_pred)
+AllLabels <- c(AllLabels, Test_Label)
+
+### Test accuracy of Naive Bayes model with train data sub set
+#plot(NB_pred, ylab = "Density", main="Naive Bayes Plot")
+}
+```
+
+### Confusion Matrix
+```{r}
+message("Naive Bayes Confusion Matrix")
+NB_Results <- table(unlist(AllResults),unlist(AllLabels))
+NB_Results
+
+message("Overall accuracy:  ",(sum(diag(NB_Results))/sum(NB_Results))) #overall accuracy
+message("Incorrect classification:  ", 1-sum(diag(NB_Results))/sum(NB_Results))
+
+```
+### Confusion Matrix with Test data
+```{r}
+### Use Naive Bayes to predict labels in test data
+NB_pred_Test <- predict(NB, test_data_noLabels)
+
+print(confusionMatrix(NB_pred_Test, test_data_Labels))
+
+```
+### Build Decision Tree Model  k-fold cross validation sets
+```{r}
+
+### 10-fold CV
+N = nrow(Reduced_Data)
+holdout <- split(sample(1:N), 1:10)
+
+
+AllResults <- list()
+AllLabels <- list()
+for (k in 1:10){
+  
+Test <- Reduced_Data[holdout[[k]],]  
+Train=Reduced_Data[-holdout[[k]],]
+
+### Remove Labels
+Test_noLabel <- Test[-c(1)]
+Test_Label <- Test$data.label
+
+
+### Build Decision Tree Model 
+Decision_Tree <- ctree(data.label~., data = Reduced_Data)
+
+
+### Use Decision Tree to predict labels in test data
+Decision_Tree_pred <- predict(Decision_Tree, Test_noLabel)
+
+
+### Test accuracy of Decision Tree model with train data sub set
+confusionMatrix(Decision_Tree_pred, Test_Label)
+
+### Store Results for each cold
+AllResults <- c(AllResults, Decision_Tree_pred)
+AllLabels <- c(AllLabels, Test_Label)
+
+### Test accuracy of Decision Tree  model with train data sub set
+#plot(Decision_Tree_pred, ylab = "Density", main="Decision Tree Plot")
+}
+```
+
+### Confusion Matrix
+```{r}
+message("Decision Tree Confusion Matrix")
+DT_Results <- table(unlist(AllResults),unlist(AllLabels))
+DT_Results
+
+message("Overall accuracy:  ",(sum(diag(DT_Results))/sum(DT_Results))) #overall accuracy
+message("Incorrect classification:  ", 1-sum(diag(DT_Results))/sum(DT_Results))
+
+```
+### Confusion Matrix with Test data
+```{r}
+### Use Decision Tree Model to predict labels in test data
+Decision_Tree_pred_Test <- predict(Decision_Tree, test_data_noLabels)
+
+print(confusionMatrix(Decision_Tree_pred_Test, test_data_Labels))
+
+```
