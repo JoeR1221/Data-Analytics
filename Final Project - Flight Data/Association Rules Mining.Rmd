@@ -1,0 +1,104 @@
+#### Load packages for Association Rules Mining
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+require(dplyr)
+require(RWeka)
+require(arules)
+require(arulesViz)
+require(ggplot2)
+```
+
+#### Load and view data
+
+```{r}
+
+Flights <- read.csv("ARM.csv", stringsAsFactors = TRUE)
+Flights$month <- as.factor(Flights$month)
+str(Flights)
+summary(Flights)
+```
+
+#### Final check before analysis
+
+```{r}
+str(Flights)
+```
+
+#### Association Rules Mining
+
+The Apriori principle will be applied to reduce the overall computational complexity. This is based on the principle that if an itemset is frequent, then all subsets must also be frequent. This algorithm will produce a list of rules which each have a set of items that commonly occur together. 
+
+Each rule's effectiveness is measured by Support, Confidence, and Lift.
+
+Support - How often a rule is applicable to a given data set
+Confidence -  How frequently certain items appear with other items in a transactions
+Lift - The ratio of the confidence of the rule and the expected confidence of the rule
+
+All three values will be reviewed together holistically to properly assess the overall effectiveness of a rule.
+
+
+##### Set Apriori rules
+
+An initial analysis of all rules is performed
+```{r}
+rules <- apriori(Flights, parameter = list(maxlen = 2, supp = 0.1, conf = 0.5))
+summary(rules)
+```
+
+
+```{r}
+rules_graph <- sort(rules, decreasing = TRUE, by = "lift")
+plot(rules_graph, method="grouped", measure="confidence")
+```
+
+```{R}
+inspect(rules[1:5])
+```
+
+
+
+##### Limit rhs by highest percentages of weather delay and carrier delay
+
+```{r}
+rules <- apriori(Flights, parameter = list(maxlen = 3, supp = 0.001, conf = 0.1), appearance = list(rhs = c("Perc_arr_del_15=HIGHEST_Delay_Over_15","Perc_arr_cancelled=LOWEST_Cancellation")))
+inspect(rules)
+```
+
+
+```{r}
+rules <- sort(rules, decreasing = TRUE, by = "confidence")
+inspect(rules[1:5])
+rules_graph <- rules[1:25]
+plot(rules_graph, method="grouped", measure="confidence")
+```
+
+```{r}
+rules <- apriori(Flights, parameter = list(maxlen = 3, supp = 0.001, conf = 0.1), appearance = list(rhs = c("Perc_carrier_ct=HIGHEST_Carrier_Delay","Perc_weather_ct=HIGHEST_Weather_Delay")))
+inspect(rules)
+```
+```{r}
+rules <- sort(rules, decreasing = TRUE, by = "confidence")
+inspect(rules[1:5])
+rules_graph <- rules[1:25]
+plot(rules_graph, method="grouped", measure="confidence")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

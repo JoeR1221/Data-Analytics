@@ -1,0 +1,286 @@
+---
+title: "Chris_Romero_HW6_v0"
+author: "Chris Romero"
+date: "08/28/2020"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+##1. INTRODUCTION
+
+The objective of this project is to use Aireline On-Time Statistics and Delay Causes data from the Bureau of Transportation Statistics (part of the United States Department of Transportation) to predict the likelihood of a flight delay at the top 50 air ports. Data was sourced from the following link:
+
+https://www.transtats.bts.gov/OT_Delay/ot_delaycause1.asp?display=data&pn=1
+
+
+# PACKAGES USED 
+
+``` {r package load, include = FALSE}
+
+library(e1071)
+
+library(FactoMineR)
+
+library(caret)
+library(ggplot2)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(dplyr)
+library(sqldf)
+library(class)
+library(randomForest)
+```
+
+# LOAD DATA SET
+
+``` {r load data set}
+# Load in the raw data set as csv and explore its basic structure
+
+top50 <- read.csv("C:/Users/CRRomero/Desktop/QWIK_FORMS/GRAD/IST707_MON/PROJECT/Top_50_Airports.csv", header = TRUE, stringsAsFactors = TRUE)
+str(top50)
+
+```
+
+Data loads fine; however, we can already see two issues: (1) column "X" is not necessary (appears as some categorical assignment in database file) and can be removed and (2) we should convert the arr_del15 column to a factor. arr_del15 indicates the average number of minutes for delays at a given airport in a given month; thus, a screening (i.e., threshold) value must be created to separate ontime vs delayed flights.
+
+``` {r format data set}
+
+# no need for column X. Remove it. 
+
+top50$X <- NULL
+#str(top50)
+```
+
+``` {r how does delay data look}
+#what is the distrubtion of delays across the top50 data set?
+
+top50$arr_del15 <- as.numeric(top50$arr_del15)
+
+hist(top50$arr_del15, main = "Distribution of Avg Delay Times across Top 50 Airports", xlab = "Avg Minutes of Delay", ylab = "Flight Count", ylim = c(0,20000))
+```
+
+```{r how does delay data look take 2}
+
+# we can see that the highest number of flights is signficantly less than 1,000 mins with a few outliers. So let's further reduce the scale to see if a better threshold value for Avg Delay Times is apparent. 
+
+hist(top50$arr_del15, main = "Distrubtion of Avg Delay Times across Top 50 Airports", xlab = "Avg Minutes of Delay", ylab = "Flight Count", breaks = 100, xlim = c(0,180), ylim = c(0,12500))
+```
+
+``` {r final structure exploration to identify any NA values}
+
+#any(is.na(top50))
+# summary(top50)
+na <- sum(!complete.cases(top50))
+
+```
+
+``` {r % of rows with NA vs entire dat set}
+na/nrow(top50)*100
+```
+``` {r remove NAs}
+
+# as the number of rows with NAs represents only 0.21% of the overall data set, let's remove those so they do not create issues later
+
+top50 <- na.omit(top50)
+
+any(is.na(top50))
+
+# based on any(), we can confirm now there are no NAs in the set
+```
+
+``` {r set arr_del15 threshold value and as.factor}
+
+# nrow(top50)
+
+# we can see that of the 21,196 rows, more than half have a delay of 50 minutes or less. Furthermore, from a practical standpoint and for the purpose of this model, we can consider that 50 minutes after a scheduled arrival is a suitable threshold to consider a flight. 
+
+# this also aligns nicely with the median value for the data set:
+
+#summary(top50$arr_del15)
+
+#Many travellers would typically "allow" 50 minutes or less as an acceptable delay understanding the many factors that can impact air travel such as weather, security lines, other air traffic, etc. 
+
+# Thus, a screening value of arr_del15 will be necessary to consider a flight as arrived on time or delayed. Thus, let us make arr_del15 as a factor and then we would define the threshold value (as 50 mins)
+
+# For this model, let's consider 50 minutes as the threshold. Thus on-time will be considered as <= 49 minutes. 
+# Any delay at >-= 50 minutes will be considered a delay. 
+
+top50$ontime <- as.factor(ifelse(top50$arr_del15 <= 49, "YES", "NO" ))
+
+top50$arr_del15 <- as.factor(top50$arr_del15)
+
+str(top50$ontime)
+summary(top50$ontime)
+```
+
+Now we can remove information about the city, state, airport, etc. The purpose of the model is to predict the likelihood of delay at a certain airport due to non-geographical factors. Thus, the model will consider factors such as overall volume of flights (i.e., amount of traffic), weather, intensity of security, airline carrier, etc.  
+
+
+
+``` {r hide info about city, state, airport}
+
+#(str(top50))
+# remove info about city, state, airport
+top50$airport_name <- NULL
+top50$airport <-NULL
+top50$City <- NULL
+top50$City_State <- NULL
+str(top50)
+```
+
+now that we have explored and cleaned data, let's create a random sample of the training data set
+
+``` {r reduce data size and set seed, echo = TRUE, message = FALSE, warning = FALSE}
+
+# set the percentage to reduce the data as well as the set seed. 
+percent <- 0.35
+set.seed(42)
+
+split <- sample(nrow(top50), nrow(top50)*percent)
+top50_train <- top50[split,]
+dim(top50_train)
+```
+
+``` {r setting static variables, echo = TRUE, message = FALSE, warning = FALSE}
+# Setting static variables used through the models section
+
+N <- nrow(top50_train)
+kfolds <- 5
+set.seed(42)
+holdout <- split(sample(1:N), 1:kfolds)
+```
+
+Now that we have generated a random sample and created the training/testing data sets, we may proceed with testing in SVM using e1071 package
+
+``` {r SVM with k-folds validation}
+
+all_results <- data.frame(orig=c(), pred = c())
+for(k in 1:kfolds){
+  new_test <- top50_train[holdout[[k]], ]
+  new_train <- top50_train[-holdout[[k]], ]
+  
+  new_test_no_ontime <- new_test[-c(20)]
+  new_test_just_ontime <- new_test[c(20)]
+  
+  flight_model <- svm(ontime ~ ., top50_train, na.action = na.pass, scale = FALSE)
+  svm.pred <- predict(flight_model, new_test_no_ontime, type = c("class"))
+  
+  all_results <- rbind(all_results, data.frame(orig = new_test_just_ontime$ontime, pred = svm.pred))
+}
+
+# running at kfolds = 5 and percent = 35% (for dimension reduction) takes about 5 mins run time
+```
+
+``` {r confusion matrix, echo = TRUE, message = FALSE, warning = FALSE}
+
+## end cross validation - present results for all folds
+(CM1 <- table(all_results$orig, all_results$pred))
+(accuracy1 <- 100*sum(diag(CM1)/sum(CM1)))
+
+paste("total number of observations:", sum(CM1), "- Accuracy:", accuracy1, sep = " ")
+
+```
+
+``` {r SVM with kernel at polynomial}
+
+all_results <- data.frame(orig=c(), pred = c())
+for(k in 1:kfolds){
+  new_test <- top50_train[holdout[[k]], ]
+  new_train <- top50_train[-holdout[[k]], ]
+  
+  new_test_no_ontime <- new_test[-c(20)]
+  new_test_just_ontime <- new_test[c(20)]
+  
+  flight_model <- svm(ontime ~ ., top50_train, na.action = na.pass, kernel = "polynomial", scale = FALSE)
+  svm.pred <- predict(flight_model, new_test_no_ontime, type = c("class"))
+  
+  all_results <- rbind(all_results, data.frame(orig = new_test_just_ontime$ontime, pred = svm.pred))
+}
+
+# running at kfolds = 5 and percent = 35% (for dimension reduction) and kernel = "polynomial" results in WARNING: reaching max number of iterations
+```
+
+``` {r SVM with kernel at polynomial}
+
+all_results <- data.frame(orig=c(), pred = c())
+for(k in 1:kfolds){
+  new_test <- top50_train[holdout[[k]], ]
+  new_train <- top50_train[-holdout[[k]], ]
+  
+  new_test_no_ontime <- new_test[-c(20)]
+  new_test_just_ontime <- new_test[c(20)]
+  
+  flight_model <- svm(ontime ~ ., top50_train, na.action = na.pass, kernel = "sigmoid", scale = FALSE)
+  svm.pred <- predict(flight_model, new_test_no_ontime, type = c("class"))
+  
+  all_results <- rbind(all_results, data.frame(orig = new_test_just_ontime$ontime, pred = svm.pred))
+}
+
+# running at kfolds = 5 and percent = 35% (for dimension reduction) and kernel = "sigmoid" results in WARNING: reaching max number of iterations
+```
+
+``` {r confusion matrix, echo = TRUE, message = FALSE, warning = FALSE}
+
+## end cross validation - present results for all folds
+(CM1 <- table(all_results$orig, all_results$pred))
+(accuracy1 <- 100*sum(diag(CM1)/sum(CM1)))
+
+paste("total number of observations:", sum(CM1), "- Accuracy:", accuracy1, sep = " ")
+
+```
+
+The accuracy of SVM data set very good at 100% after adjusting the training set size. 
+
+The initial run of SVM used the full test training data set which had over 21,000 rows. The computing time was long and manual stop on RStudio was required. The model was re-run with a much reduced set (using initially 5% of the original data set and k-folds = 2) to confirm the model worked properly.
+
+Once confirmation the model was working, both the k-folds and data set size were increased in step-wise fashion.
+
+K-folds was increased to 5 and eventually a 35% data set size (which still utilised 7,402 observations) was used. This took about 5-7 mins to run. 
+
+Just for comparison, the kernel was changed to polynomial which resulted in an error indicating the maximum number of iterations had been reached. The kernal was then changed to sigmoid which resulted in an accuracy of only 50.58%. The model could not correctly predict any positive ontime results.  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
